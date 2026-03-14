@@ -117,9 +117,70 @@ Orpheus-FastAPI/
 ### Prerequisites
 
 - Python 3.8-3.11 (Python 3.12 is not supported due to removal of pkgutil.ImpImporter)
+- **llama.cpp server** - Required for native installation (Docker handles this automatically)
+- Orpheus-3b-FT-Q8_0.gguf model file (~3.8GB)
 - CUDA-compatible or ROCm-compatible GPU (recommended: RTX series for best performance)
-- Using docker compose or separate LLM inference server running the Orpheus model (e.g., LM Studio or llama.cpp server)
 - For Docker GPU Support, ensure you're using an Nvidia GPU on either Linux or Windows with CUDA 12.4 or greater and NVIDIA Container Toolkit installed
+
+### ⚠️ Important: llama.cpp Server Requirement
+
+**This project requires a running llama.cpp server to generate speech.** The TTS engine connects to this server to generate audio tokens from text.
+
+**Two installation approaches:**
+
+1. **Docker (Recommended)** - Automatically downloads and configures llama.cpp
+2. **Native Installation** - You must manually install llama.cpp server
+
+### Installing llama.cpp Server (Native Installation Only)
+
+If using Docker, skip this section - Docker handles everything automatically.
+
+For native installation, you need to build or download llama.cpp server:
+
+**Option A: Build from source (Recommended for Apple Silicon)**
+
+```bash
+# Clone llama.cpp repository
+git clone https://github.com/ggerganov/llama.cpp.git
+cd llama.cpp
+
+# Build with Metal support for Apple Silicon (M1/M2/M3)
+cmake -B build -DLLAMA_METAL=ON
+cmake --build build --config Release -j 8
+
+# The binary will be at: build/bin/llama-server
+# Add to your PATH or note the full path
+```
+
+**Option B: Download pre-built binaries**
+
+Download from [llama.cpp releases](https://github.com/ggerganov/llama.cpp/releases) for your platform.
+
+**Option C: Homebrew (macOS/Linux)**
+
+```bash
+brew install llama.cpp
+```
+
+**Verify installation:**
+
+```bash
+llama-server --version
+```
+
+### Downloading the Orpheus Model
+
+Download the model file (~3.8GB) from HuggingFace:
+
+```bash
+# Create models directory
+mkdir -p models
+
+# Download the model
+wget https://huggingface.co/lex-au/Orpheus-3b-FT-Q8_0.gguf/resolve/main/Orpheus-3b-FT-Q8_0.gguf -P models/
+```
+
+Or download manually from: https://huggingface.co/lex-au/Orpheus-3b-FT-Q8_0.gguf
 
 ### 🐳 Docker compose
 
@@ -158,6 +219,8 @@ The system will automatically download the specified model from Hugging Face bef
 
 ### FastAPI Service Native Installation
 
+**Prerequisites:** You must have llama.cpp server installed and the Orpheus model downloaded (see sections above).
+
 1. Clone the repository:
 ```bash
 git clone https://github.com/Lex-au/Orpheus-FastAPI.git
@@ -195,6 +258,18 @@ pip3 install -r requirements.txt
 # Create directories for outputs and static files
 mkdir -p outputs static
 ```
+
+6. **Start llama.cpp server** (in a separate terminal):
+```bash
+# Set the path to your llama-server binary and model
+export LLAMA_SERVER_PATH=/path/to/llama-server
+export ORPHEUS_MODEL_PATH=/path/to/Orpheus-3b-FT-Q8_0.gguf
+
+# Start the server
+$LLAMA_SERVER_PATH -m $ORPHEUS_MODEL_PATH --host 127.0.0.1 --port 1234 -ngl 99
+```
+
+**Note:** Keep this terminal open. The server must be running for the TTS to work.
 
 ### Starting the Server
 

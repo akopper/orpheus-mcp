@@ -492,11 +492,7 @@ async def main():
             await app.run(
                 read_stream,
                 write_stream,
-                InitializationOptions(
-                    server_name="orpheus-tts",
-                    server_version="1.0.0",
-                    capabilities=app.get_capabilities(),
-                ),
+                app.create_initialization_options(),
             )
     elif config.transport == "sse":
         from mcp.server.sse import SseServerTransport
@@ -512,11 +508,7 @@ async def main():
                 await app.run(
                     streams[0],
                     streams[1],
-                    InitializationOptions(
-                        server_name="orpheus-tts",
-                        server_version="1.0.0",
-                        capabilities=app.get_capabilities(),
-                    ),
+                    app.create_initialization_options(),
                 )
 
         starlette_app = Starlette(

@@ -4,3 +4,5 @@ __pycache__/
 venv/
 models/
 *.gguf
+samples/
+outputs/
