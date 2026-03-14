@@ -106,10 +106,49 @@ class LlamaServerManager:
         self.config = config
         self.process: Optional[subprocess.Popen] = None
         self.server_ready = False
+        self.pid_file = "/tmp/llama-server.pid"
+
+    def _get_pid_from_file(self) -> Optional[int]:
+        """Read PID from file"""
+        try:
+            if os.path.exists(self.pid_file):
+                with open(self.pid_file, "r") as f:
+                    return int(f.read().strip())
+        except:
+            pass
+        return None
+
+    def _write_pid_file(self, pid: int):
+        """Write PID to file"""
+        with open(self.pid_file, "w") as f:
+            f.write(str(pid))
+
+    def _is_pid_running(self, pid: int) -> bool:
+        """Check if a process with given PID is running"""
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+
+    def _cleanup_stale_pid_file(self):
+        """Remove stale PID file if process is not running"""
+        pid = self._get_pid_from_file()
+        if pid and not self._is_pid_running(pid):
+            try:
+                os.remove(self.pid_file)
+            except:
+                pass
 
     def is_server_running(self) -> bool:
-        """Check if llama.cpp server is already running"""
+        """Check if llama.cpp server is already running using multiple methods"""
         import requests
+
+        self._cleanup_stale_pid_file()
+
+        saved_pid = self._get_pid_from_file()
+        if saved_pid and self._is_pid_running(saved_pid):
+            print(f"✓ Found running server with PID {saved_pid}", file=sys.stderr)
 
         try:
             response = requests.post(
@@ -166,11 +205,17 @@ class LlamaServerManager:
                 stderr=subprocess.PIPE,
             )
 
+            # Write PID file
+            self._write_pid_file(self.process.pid)
+
             # Wait for server to be ready
             for i in range(60):  # 60 second timeout
                 time.sleep(1)
                 if self.is_server_running():
-                    print("✓ llama.cpp server ready", file=sys.stderr)
+                    print(
+                        "✓ llama.cpp server ready (PID: {})".format(self.process.pid),
+                        file=sys.stderr,
+                    )
                     return True
 
             print("✗ Server failed to start within timeout", file=sys.stderr)
@@ -221,6 +266,13 @@ class LlamaServerManager:
             except:
                 self.process.kill()
             self.process = None
+
+        # Clean up PID file
+        if os.path.exists(self.pid_file):
+            try:
+                os.remove(self.pid_file)
+            except:
+                pass
 
 
 def estimate_tokens(text: str) -> int:
