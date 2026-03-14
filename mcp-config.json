@@ -1,0 +1,33 @@
+{
+  "mcpServers": {
+    "orpheus-tts": {
+      "command": "./run_mcp_server.sh",
+      "args": [],
+      "env": {
+        "ORPHEUS_MODEL_PATH": "${ORPHEUS_MODEL_PATH}",
+        "ORPHEUS_LLAMA_CPP_PATH": "${ORPHEUS_LLAMA_CPP_PATH}",
+        "ORPHEUS_OUTPUT_DIR": "outputs",
+        "MCP_TRANSPORT": "stdio"
+      },
+      "description": "Orpheus TTS MCP Server - Generate speech and audiobooks with 25 voices across 8 languages",
+      "tools": [
+        {
+          "name": "generate_speech",
+          "description": "Convert text to speech using Orpheus TTS. Returns path to generated WAV file."
+        },
+        {
+          "name": "list_voices",
+          "description": "List all available voices for speech generation."
+        },
+        {
+          "name": "get_voice_info",
+          "description": "Get detailed information about a specific voice including language and supported features."
+        },
+        {
+          "name": "estimate_tokens",
+          "description": "Estimate token count for text to help plan chunking strategy for long texts."
+        }
+      ]
+    }
+  }
+}

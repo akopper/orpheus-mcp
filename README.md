@@ -203,6 +203,56 @@ Access:
 
 ![API Documentation](https://lex-au.github.io/Orpheus-FastAPI/docs.png)
 
+### MCP Server (Model Context Protocol)
+
+Orpheus-FastAPI now includes an MCP server for integration with AI agents and tools like Claude Desktop, mcporter, and opencode.
+
+**Features:**
+- Standalone operation with auto-managed llama.cpp server
+- 4 MCP tools: `generate_speech`, `list_voices`, `get_voice_info`, `estimate_tokens`
+- Support for emotion tags and 25 voices across 8 languages
+- Token estimation for planning long-form content
+
+**Quick Start:**
+
+1. Set environment variables:
+```bash
+export ORPHEUS_MODEL_PATH=/path/to/Orpheus-3b-FT-Q8_0.gguf
+export ORPHEUS_LLAMA_CPP_PATH=/path/to/llama-server  # optional
+```
+
+2. Run the MCP server:
+```bash
+python mcp_server.py
+```
+
+**Configuration for Claude Desktop:**
+
+Add to `claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "orpheus-tts": {
+      "command": "python",
+      "args": ["/path/to/Orpheus-FastAPI/mcp_server.py"],
+      "env": {
+        "ORPHEUS_MODEL_PATH": "/path/to/Orpheus-3b-FT-Q8_0.gguf"
+      }
+    }
+  }
+}
+```
+
+**Configuration for mcporter:**
+
+Use the provided `mcp-config.json`:
+```bash
+mcporter call orpheus-tts.list_voices
+mcporter call orpheus-tts.generate_speech '{"text": "Hello world", "voice": "tara"}'
+```
+
+See `AGENTS.md` for detailed agent instructions and best practices.
+
 ## API Usage
 
 ### OpenAI-Compatible Endpoint
