@@ -94,13 +94,13 @@ Convert text to speech and save as WAV file.
 mcporter call orpheus-tts.generate_speech \
     text="Hello world" \
     voice=tara \
-    output_path=outputs/hello.wav
+    output_path=~/.openclaw/media/tts/hello.wav
 ```
 
 **Parameters:**
 - `text` (required): Text to convert. Supports emotion tags.
 - `voice` (optional): Voice name. Default: "tara"
-- `output_path` (optional): Output file path. Auto-generated if not provided.
+- `output_path` (optional): Output file path. Recommended: `~/.openclaw/media/tts/filename.wav`
 - `streaming` (optional): For real-time playback. Default: false
 
 **Returns:** JSON with success status, output path, voice, file size.
@@ -142,7 +142,7 @@ Add these tags in your text for expressive speech:
 mcporter call orpheus-tts.generate_speech \
     text="That's amazing! <laugh> I can't believe it!" \
     voice=tara \
-    output_path=outputs/happy.wav
+    output_path=~/.openclaw/media/tts/happy.wav
 ```
 
 ---
@@ -168,17 +168,17 @@ mcporter call orpheus-tts.estimate_tokens text="[YOUR LONG TEXT]"
 # 2. Split text into chunks (recommended: under 800 tokens each)
 
 # 3. Generate each chunk
-mcporter call orpheus-tts.generate_speech text="[CHAPTER 1]" voice=tara output_path=outputs/chapter1.wav
-mcporter call orpheus-tts.generate_speech text="[CHAPTER 2]" voice=tara output_path=outputs/chapter2.wav
-mcporter call orpheus-tts.generate_speech text="[CHAPTER 3]" voice=tara output_path=outputs/chapter3.wav
+mcporter call orpheus-tts.generate_speech text="[CHAPTER 1]" voice=tara output_path=~/.openclaw/media/tts/chapter1.wav
+mcporter call orpheus-tts.generate_speech text="[CHAPTER 2]" voice=tara output_path=~/.openclaw/media/tts/chapter2.wav
+mcporter call orpheus-tts.generate_speech text="[CHAPTER 3]" voice=tara output_path=~/.openclaw/media/tts/chapter3.wav
 ```
 
 ### Multi-Voice Audiobook
 
 ```bash
-mcporter call orpheus-tts.generate_speech text="[NARRATOR TEXT]" voice=tara output_path=outputs/narrator.wav
-mcporter call orpheus-tts.generate_speech text="[MALE CHARACTER]" voice=leo output_path=outputs/character_male.wav
-mcporter call orpheus-tts.generate_speech text="[FEMALE CHARACTER]" voice=leah output_path=outputs/character_female.wav
+mcporter call orpheus-tts.generate_speech text="[NARRATOR TEXT]" voice=tara output_path=~/.openclaw/media/tts/narrator.wav
+mcporter call orpheus-tts.generate_speech text="[MALE CHARACTER]" voice=leo output_path=~/.openclaw/media/tts/character_male.wav
+mcporter call orpheus-tts.generate_speech text="[FEMALE CHARACTER]" voice=leah output_path=~/.openclaw/media/tts/character_female.wav
 ```
 
 ---
