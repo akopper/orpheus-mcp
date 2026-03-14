@@ -903,45 +903,47 @@ async def main():
     # Ensure output directory exists
     os.makedirs(config.output_dir, exist_ok=True)
 
-    # Run server with appropriate transport
-    if config.transport == "stdio":
-        async with stdio_server() as (read_stream, write_stream):
-            await app.run(
-                read_stream,
-                write_stream,
-                app.create_initialization_options(),
-            )
-    elif config.transport == "sse":
-        from mcp.server.sse import SseServerTransport
-        from starlette.applications import Starlette
-        from starlette.routing import Route
-
-        sse = SseServerTransport("/messages/")
-
-        async def handle_sse(request):
-            async with sse.connect_sse(
-                request.scope, request.receive, request._send
-            ) as streams:
+    # Use lifespan context manager to handle server lifecycle (autostart, cleanup)
+    async with app_lifespan():
+        # Run server with appropriate transport
+        if config.transport == "stdio":
+            async with stdio_server() as (read_stream, write_stream):
                 await app.run(
-                    streams[0],
-                    streams[1],
+                    read_stream,
+                    write_stream,
                     app.create_initialization_options(),
                 )
+        elif config.transport == "sse":
+            from mcp.server.sse import SseServerTransport
+            from starlette.applications import Starlette
+            from starlette.routing import Route
 
-        starlette_app = Starlette(
-            debug=True,
-            routes=[
-                Route("/sse", endpoint=handle_sse),
-                Route("/messages/", endpoint=sse.handle_post_message),
-            ],
-        )
+            sse = SseServerTransport("/messages/")
 
-        import uvicorn
+            async def handle_sse(request):
+                async with sse.connect_sse(
+                    request.scope, request.receive, request._send
+                ) as streams:
+                    await app.run(
+                        streams[0],
+                        streams[1],
+                        app.create_initialization_options(),
+                    )
 
-        uvicorn.run(starlette_app, host="0.0.0.0", port=config.port)
-    else:
-        print(f"Unknown transport: {config.transport}", file=sys.stderr)
-        sys.exit(1)
+            starlette_app = Starlette(
+                debug=True,
+                routes=[
+                    Route("/sse", endpoint=handle_sse),
+                    Route("/messages/", endpoint=sse.handle_post_message),
+                ],
+            )
+
+            import uvicorn
+
+            uvicorn.run(starlette_app, host="0.0.0.0", port=config.port)
+        else:
+            print(f"Unknown transport: {config.transport}", file=sys.stderr)
+            sys.exit(1)
 
 
 if __name__ == "__main__":

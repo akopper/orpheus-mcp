@@ -193,6 +193,27 @@ mcporter call orpheus-tts.generate_speech text="[FEMALE CHARACTER]" voice=leah o
 | "Timeout" | Split text into smaller chunks |
 | "Invalid voice" | Run `list_voices` to get valid options |
 | "Model not found" | Check ORPHEUS_MODEL_PATH environment variable |
+| "File not found after generation" | **Always use absolute paths** for output_path. Relative paths may save to `~/.mcporter/` instead of current directory |
+
+### Important: Use Absolute Paths for Output
+
+**Always use absolute paths for the `output_path` parameter.** When using relative paths, the file may be saved to `~/.mcporter/` instead of your current working directory.
+
+**Correct:**
+```bash
+mcporter call orpheus-tts.generate_speech \
+    text="Hello world" \
+    voice=tara \
+    output_path=/Users/username/project/audio/hello.wav
+```
+
+**Incorrect (may save to ~/.mcporter/):**
+```bash
+mcporter call orpheus-tts.generate_speech \
+    text="Hello world" \
+    voice=tara \
+    output_path=hello.wav
+```
 
 ---
 
