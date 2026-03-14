@@ -250,7 +250,9 @@ async def handle_tool_call(
         raise ValueError(f"Unknown tool: {name}")
 
 
-async def handle_generate_speech(arguments: dict) -> List[TextContent]:
+async def handle_generate_speech(
+    arguments: dict,
+) -> List[TextContent | ImageContent | EmbeddedResource]:
     """Generate speech from text"""
     text = arguments.get("text", "")
     voice = arguments.get("voice", DEFAULT_VOICE)
@@ -303,7 +305,7 @@ async def handle_generate_speech(arguments: dict) -> List[TextContent]:
         return [TextContent(type="text", text=f"Error generating speech: {str(e)}")]
 
 
-async def handle_list_voices() -> List[TextContent]:
+async def handle_list_voices() -> List[TextContent | ImageContent | EmbeddedResource]:
     """List all available voices"""
     voices_info = []
 
@@ -326,7 +328,9 @@ async def handle_list_voices() -> List[TextContent]:
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def handle_get_voice_info(arguments: dict) -> List[TextContent]:
+async def handle_get_voice_info(
+    arguments: dict,
+) -> List[TextContent | ImageContent | EmbeddedResource]:
     """Get detailed information about a voice"""
     voice = arguments.get("voice", DEFAULT_VOICE)
 
@@ -365,7 +369,9 @@ async def handle_get_voice_info(arguments: dict) -> List[TextContent]:
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def handle_estimate_tokens(arguments: dict) -> List[TextContent]:
+async def handle_estimate_tokens(
+    arguments: dict,
+) -> List[TextContent | ImageContent | EmbeddedResource]:
     """Estimate token count for text"""
     text = arguments.get("text", "")
 
