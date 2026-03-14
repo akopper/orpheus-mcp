@@ -140,6 +140,42 @@ class LlamaServerManager:
             except:
                 pass
 
+    def get_loaded_model_name(self) -> Optional[str]:
+        """Get the name of the currently loaded model from the server"""
+        import requests
+
+        try:
+            response = requests.get(
+                f"{self.config.api_url.replace('/v1/completions', '/v1/models')}",
+                timeout=2,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("data") and len(data["data"]) > 0:
+                    return data["data"][0].get("id")
+        except:
+            pass
+        return None
+
+    def is_correct_model_loaded(self, expected_model_path: str) -> bool:
+        """Check if the expected model is loaded in the running server"""
+        expected_name = os.path.basename(expected_model_path)
+        loaded_name = self.get_loaded_model_name()
+
+        if loaded_name:
+            # Compare just the filename (ignore path differences)
+            loaded_base = loaded_name.split("/")[-1].split("\\")[-1]
+            expected_base = expected_name.split("/")[-1].split("\\")[-1]
+
+            if loaded_base.lower() == expected_base.lower():
+                return True
+            else:
+                print(
+                    f"⚠ Model mismatch: loaded '{loaded_base}', expected '{expected_base}'",
+                    file=sys.stderr,
+                )
+        return False
+
     def is_server_running(self) -> bool:
         """Check if llama.cpp server is already running using multiple methods"""
         import requests
@@ -164,11 +200,29 @@ class LlamaServerManager:
         except:
             return False
 
-    def start_server(self) -> bool:
+    def start_server(self, force_restart: bool = False) -> bool:
         """Start the llama.cpp server"""
+        # Check if server is running and has correct model
         if self.is_server_running():
-            print("✓ llama.cpp server already running", file=sys.stderr)
-            return True
+            if (
+                not force_restart
+                and self.config.model_path
+                and self.is_correct_model_loaded(self.config.model_path)
+            ):
+                print(
+                    "✓ llama.cpp server already running with correct model",
+                    file=sys.stderr,
+                )
+                return True
+            else:
+                # Wrong model loaded - need to restart
+                print(
+                    "↻ Restarting llama.cpp server with correct model...",
+                    file=sys.stderr,
+                )
+                self.stop_server()
+                # Small delay to ensure port is released
+                time.sleep(1)
 
         if not self.config.model_path:
             print("✗ ORPHEUS_MODEL_PATH not set", file=sys.stderr)
