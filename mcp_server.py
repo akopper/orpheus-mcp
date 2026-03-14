@@ -58,6 +58,20 @@ from tts_engine import (
 )
 from tts_engine.inference import generate_tokens_from_api, tokens_decoder_sync
 
+# Import Voice Cloning modules
+try:
+    from voice_cloning import SNACTokenizer, VoiceCloneEngine, ReferenceStore
+    from voice_cloning.config import (
+        TIMEOUT_CLONE_DIRECT,
+        TIMEOUT_CLONE_REFERENCE,
+        get_reference_dir,
+    )
+
+    VOICE_CLONING_AVAILABLE = True
+except ImportError as e:
+    VOICE_CLONING_AVAILABLE = False
+    print(f"Voice cloning not available: {e}", file=sys.stderr)
+
 
 def get_default_output_dir() -> str:
     """Get default output directory based on platform"""
@@ -358,6 +372,14 @@ async def handle_tool_call(
         return await handle_get_voice_info(arguments)
     elif name == "estimate_tokens":
         return await handle_estimate_tokens(arguments)
+    elif VOICE_CLONING_AVAILABLE and name == "clone_voice_direct":
+        return await _handle_clone_voice_direct(arguments)
+    elif VOICE_CLONING_AVAILABLE and name == "clone_voice":
+        return await _handle_clone_voice(arguments)
+    elif VOICE_CLONING_AVAILABLE and name == "list_reference_voices":
+        return await _handle_list_reference_voices(arguments)
+    elif VOICE_CLONING_AVAILABLE and name == "delete_reference_voice":
+        return await _handle_delete_reference_voice(arguments)
     else:
         raise ValueError(f"Unknown tool: {name}")
 
@@ -508,6 +530,84 @@ async def handle_estimate_tokens(
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
+def _get_voice_cloning_tools() -> List[Tool]:
+    """Get voice cloning tools if available"""
+    if not VOICE_CLONING_AVAILABLE:
+        return []
+
+    return [
+        Tool(
+            name="clone_voice_direct",
+            description="Clone voice from an audio file and optionally save for later use.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "audio_path": {
+                        "type": "string",
+                        "description": "Path to reference audio file",
+                    },
+                    "transcript": {
+                        "type": "string",
+                        "description": "Transcript of reference audio",
+                    },
+                    "text": {"type": "string", "description": "Text to generate"},
+                    "output_path": {
+                        "type": "string",
+                        "description": "Optional output path",
+                    },
+                    "save_reference": {
+                        "type": "string",
+                        "description": "Optional name to save reference",
+                    },
+                    "voice_name": {
+                        "type": "string",
+                        "description": "Optional display name",
+                    },
+                },
+                "required": ["audio_path", "transcript", "text"],
+            },
+        ),
+        Tool(
+            name="clone_voice",
+            description="Generate speech using a saved reference voice.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "reference_name": {
+                        "type": "string",
+                        "description": "Saved reference name",
+                    },
+                    "text": {"type": "string", "description": "Text to generate"},
+                    "output_path": {
+                        "type": "string",
+                        "description": "Optional output path",
+                    },
+                },
+                "required": ["reference_name", "text"],
+            },
+        ),
+        Tool(
+            name="list_reference_voices",
+            description="List all saved reference voices.",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="delete_reference_voice",
+            description="Delete a saved reference voice.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Reference name to delete",
+                    }
+                },
+                "required": ["name"],
+            },
+        ),
+    ]
+
+
 @app.list_tools()
 async def list_tools() -> List[Tool]:
     """List available tools"""
@@ -540,44 +640,239 @@ async def list_tools() -> List[Tool]:
                 "required": ["text"],
             },
         ),
-        Tool(
-            name="list_voices",
-            description="List all available voices for speech generation.",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-            },
-        ),
-        Tool(
-            name="get_voice_info",
-            description="Get detailed information about a specific voice including language and supported features.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "voice": {
-                        "type": "string",
-                        "description": "Voice name to get info for",
-                        "enum": list(AVAILABLE_VOICES),
+    ] + _get_voice_cloning_tools()
+
+
+def _get_voice_cloning_handlers():
+    """Map tool names to their handlers"""
+    return {
+        "clone_voice_direct": _handle_clone_voice_direct,
+        "clone_voice": _handle_clone_voice,
+        "list_reference_voices": _handle_list_reference_voices,
+        "delete_reference_voice": _handle_delete_reference_voice,
+    }
+
+
+async def _handle_clone_voice_direct(arguments: dict) -> List[TextContent]:
+    """Handle clone_voice_direct tool call"""
+    if not VOICE_CLONING_AVAILABLE:
+        return [
+            TextContent(
+                type="text",
+                text="Error: Voice cloning not available. Install required packages.",
+            )
+        ]
+
+    audio_path = arguments.get("audio_path")
+    transcript = arguments.get("transcript")
+    text = arguments.get("text")
+    output_path = arguments.get("output_path")
+    save_reference = arguments.get("save_reference")
+    voice_name = arguments.get("voice_name")
+
+    if not all([audio_path, transcript, text]):
+        return [
+            TextContent(
+                type="text", text="Error: audio_path, transcript, and text are required"
+            )
+        ]
+
+    config = get_config()
+
+    # Generate output path if not provided
+    if not output_path:
+        timestamp = int(time.time())
+        output_path = os.path.join(config.output_dir, f"clone_{timestamp}.wav")
+
+    # Ensure output directory exists
+    os.makedirs(config.output_dir, exist_ok=True)
+
+    try:
+        # Save reference if requested
+        if save_reference:
+            store = ReferenceStore()
+            store.save_reference(
+                name=save_reference,
+                audio_path=audio_path,
+                transcript=transcript,
+                voice_name=voice_name,
+            )
+
+        # Run voice cloning in thread pool
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            _clone_voice_sync,
+            audio_path,
+            transcript,
+            text,
+            output_path,
+        )
+
+        if result.success:
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "success": True,
+                            "output_path": result.output_path,
+                            "reference_saved": bool(save_reference),
+                            "duration_seconds": result.duration_seconds,
+                        },
+                        indent=2,
+                    ),
+                )
+            ]
+        else:
+            return [TextContent(type="text", text=f"Error: {result.error}")]
+
+    except Exception as e:
+        return [TextContent(type="text", text=f"Error: {str(e)}")]
+
+
+def _clone_voice_sync(audio_path: str, transcript: str, text: str, output_path: str):
+    """Synchronous wrapper for voice cloning"""
+    engine = VoiceCloneEngine()
+    return engine.clone_voice(
+        reference_audio_path=audio_path,
+        reference_transcript=transcript,
+        text_to_speak=text,
+        output_path=output_path,
+    )
+
+
+async def _handle_clone_voice(arguments: dict) -> List[TextContent]:
+    """Handle clone_voice tool call"""
+    if not VOICE_CLONING_AVAILABLE:
+        return [TextContent(type="text", text="Error: Voice cloning not available")]
+
+    reference_name = arguments.get("reference_name")
+    text = arguments.get("text")
+    output_path = arguments.get("output_path")
+
+    if not all([reference_name, text]):
+        return [
+            TextContent(type="text", text="Error: reference_name and text are required")
+        ]
+
+    config = get_config()
+
+    if not output_path:
+        timestamp = int(time.time())
+        output_path = os.path.join(config.output_dir, f"clone_{timestamp}.wav")
+
+    os.makedirs(config.output_dir, exist_ok=True)
+
+    try:
+        store = ReferenceStore()
+        ref = store.get_reference(reference_name)
+
+        if not ref:
+            return [
+                TextContent(
+                    type="text", text=f"Error: Reference '{reference_name}' not found"
+                )
+            ]
+
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            _clone_voice_sync,
+            ref["audio_path"],
+            store.get_transcript(reference_name),
+            text,
+            output_path,
+        )
+
+        if result.success:
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "success": True,
+                            "output_path": result.output_path,
+                            "reference_name": reference_name,
+                            "duration_seconds": result.duration_seconds,
+                        },
+                        indent=2,
+                    ),
+                )
+            ]
+        else:
+            return [TextContent(type="text", text=f"Error: {result.error}")]
+
+    except Exception as e:
+        return [TextContent(type="text", text=f"Error: {str(e)}")]
+
+
+async def _handle_list_reference_voices(arguments: dict) -> List[TextContent]:
+    """Handle list_reference_voices tool call"""
+    if not VOICE_CLONING_AVAILABLE:
+        return [TextContent(type="text", text="Error: Voice cloning not available")]
+
+    try:
+        store = ReferenceStore()
+        refs = store.list_references()
+
+        # Clean output (remove internal paths)
+        for ref in refs:
+            ref.pop("audio_path", None)
+            ref.pop("transcript_path", None)
+            ref.pop("reference_dir", None)
+
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "references": refs,
+                        "total": len(refs),
                     },
-                },
-                "required": ["voice"],
-            },
-        ),
-        Tool(
-            name="estimate_tokens",
-            description="Estimate token count for text to help plan chunking strategy for long texts.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "text": {
-                        "type": "string",
-                        "description": "Text to estimate token count for",
-                    },
-                },
-                "required": ["text"],
-            },
-        ),
-    ]
+                    indent=2,
+                ),
+            )
+        ]
+
+    except Exception as e:
+        return [TextContent(type="text", text=f"Error: {str(e)}")]
+
+
+async def _handle_delete_reference_voice(arguments: dict) -> List[TextContent]:
+    """Handle delete_reference_voice tool call"""
+    if not VOICE_CLONING_AVAILABLE:
+        return [TextContent(type="text", text="Error: Voice cloning not available")]
+
+    name = arguments.get("name")
+
+    if not name:
+        return [TextContent(type="text", text="Error: name is required")]
+
+    try:
+        store = ReferenceStore()
+        deleted = store.delete_reference(name)
+
+        if deleted:
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "success": True,
+                            "deleted": name,
+                        },
+                        indent=2,
+                    ),
+                )
+            ]
+        else:
+            return [
+                TextContent(type="text", text=f"Error: Reference '{name}' not found")
+            ]
+
+    except Exception as e:
+        return [TextContent(type="text", text=f"Error: {str(e)}")]
 
 
 @asynccontextmanager

@@ -8,8 +8,14 @@ python-dotenv==1.0.0
 
 # Audio Processing
 numpy==1.24.0
-sounddevice==0.4.6
+soundfile>=0.12.1
+librosa>=0.10.1
+scipy>=1.11.0
 snac==1.2.1       # Required for audio generation from tokens
+
+# Voice Cloning (optional)
+transformers>=4.35.0
+huggingface_hub>=0.20.0
 
 # System Utilities
 psutil==5.9.0
