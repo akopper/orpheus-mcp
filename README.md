@@ -91,16 +91,14 @@ Convert text to speech.
 ```bash
 mcporter call orpheus-tts.generate_speech \
     text="Hello world" \
-    voice=tara \
-    output_path=outputs/hello.wav
+    voice=tara
 ```
 
 **With emotion tags:**
 ```bash
 mcporter call orpheus-tts.generate_speech \
     text="That's amazing! <laugh> I can't believe it!" \
-    voice=tara \
-    output_path=outputs/happy.wav
+    voice=tara
 ```
 
 ## Available Voices
@@ -190,7 +188,7 @@ orpheus-mcp/
 
 - `ORPHEUS_MODEL_PATH` - Path to Orpheus GGUF model (required)
 - `ORPHEUS_LLAMA_CPP_PATH` - Path to llama-server binary (optional, auto-detected)
-- `ORPHEUS_OUTPUT_DIR` - Output directory (default: outputs)
+- `ORPHEUS_OUTPUT_DIR` - Output directory (default: ~/Documents/tts)
 - `MCP_TRANSPORT` - Transport type: stdio or sse (default: stdio)
 
 ## License

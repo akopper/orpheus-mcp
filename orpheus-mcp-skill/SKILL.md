@@ -198,5 +198,5 @@ mcporter call orpheus-tts.generate_speech text="[FEMALE CHARACTER]" voice=leah o
 
 - `ORPHEUS_MODEL_PATH` - Path to Orpheus GGUF model (required)
 - `ORPHEUS_LLAMA_CPP_PATH` - Path to llama-server binary (optional)
-- `ORPHEUS_OUTPUT_DIR` - Output directory (default: outputs)
+- `ORPHEUS_OUTPUT_DIR` - Output directory (default: ~/Documents/tts)
 - `MCP_TRANSPORT` - stdio or sse (default: stdio)

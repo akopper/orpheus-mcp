@@ -204,7 +204,7 @@ ORPHEUS_MODEL_PATH=/path/to/Orpheus-3b-FT-Q8_0.gguf
 # Optional
 ORPHEUS_API_URL=http://127.0.0.1:1234/v1/completions
 ORPHEUS_LLAMA_CPP_PATH=/path/to/llama-server
-ORPHEUS_OUTPUT_DIR=outputs
+ORPHEUS_OUTPUT_DIR=~/Documents/tts  # Defaults to ~/Documents/tts
 MCP_TRANSPORT=stdio  # or sse
 ```
 
@@ -274,5 +274,5 @@ Add to `claude_desktop_config.json`:
 - Audio output is 24kHz WAV format
 - Each voice supports emotion tags for expressive speech
 - The server auto-starts llama.cpp if not already running
-- Generated files persist in outputs/ directory
+- Generated files persist in ~/Documents/tts/ directory by default
 - Use absolute paths for output_path to avoid confusion

@@ -6,7 +6,6 @@
       "env": {
         "ORPHEUS_MODEL_PATH": "${ORPHEUS_MODEL_PATH}",
         "ORPHEUS_LLAMA_CPP_PATH": "${ORPHEUS_LLAMA_CPP_PATH}",
-        "ORPHEUS_OUTPUT_DIR": "outputs",
         "MCP_TRANSPORT": "stdio"
       },
       "description": "Orpheus TTS MCP Server - Generate speech and audiobooks with 25 voices across 8 languages",

@@ -25,6 +25,7 @@ import base64
 import asyncio
 import subprocess
 import tempfile
+import platform
 from pathlib import Path
 from typing import Optional, List, Dict, Any, AsyncGenerator
 from contextlib import asynccontextmanager
@@ -58,6 +59,17 @@ from tts_engine import (
 from tts_engine.inference import generate_tokens_from_api, tokens_decoder_sync
 
 
+def get_default_output_dir() -> str:
+    """Get default output directory based on platform"""
+    system = platform.system()
+    if system == "Darwin":
+        return os.path.join(os.path.expanduser("~/Documents"), "tts")
+    elif system == "Windows":
+        return os.path.join(os.environ.get("USERPROFILE", ""), "Documents", "tts")
+    else:
+        return os.path.join(os.path.expanduser("~/Documents"), "tts")
+
+
 @dataclass
 class ServerConfig:
     """Server configuration"""
@@ -68,11 +80,12 @@ class ServerConfig:
     auto_start_llama: bool = True
     transport: str = "stdio"
     port: int = 5006
-    output_dir: str = "outputs"
+    output_dir: str = ""
 
 
 def get_config() -> ServerConfig:
     """Load configuration from environment variables"""
+    default_output = get_default_output_dir()
     return ServerConfig(
         api_url=os.environ.get(
             "ORPHEUS_API_URL", "http://127.0.0.1:1234/v1/completions"
@@ -82,7 +95,7 @@ def get_config() -> ServerConfig:
         auto_start_llama=os.environ.get("ORPHEUS_AUTO_START", "true").lower() == "true",
         transport=os.environ.get("MCP_TRANSPORT", "stdio"),
         port=int(os.environ.get("MCP_PORT", "5006")),
-        output_dir=os.environ.get("ORPHEUS_OUTPUT_DIR", "outputs"),
+        output_dir=os.environ.get("ORPHEUS_OUTPUT_DIR", default_output),
     )
 
 

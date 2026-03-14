@@ -37,10 +37,10 @@ class TestServerConfig:
         assert config.api_url == "http://127.0.0.1:1234/v1/completions"
         assert config.model_path is None
         assert config.llama_cpp_path is None
-        assert config.auto_start_llama is True
+        assert config.auto_start_llama == True
         assert config.transport == "stdio"
         assert config.port == 5006
-        assert config.output_dir == "outputs"
+        assert config.output_dir == mcp.get_default_output_dir()
 
     @patch.dict(
         os.environ,

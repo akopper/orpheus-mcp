@@ -88,4 +88,4 @@ else
 fi
 
 # Run the MCP server with all arguments passed through
-exec python "${SCRIPT_DIR}/mcp_server.py" "$@"
+exec python3 "${SCRIPT_DIR}/mcp_server.py" "$@"

@@ -10,9 +10,21 @@ import argparse
 import threading
 import queue
 import asyncio
+import platform
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Any, Optional, Generator, Union, Tuple
 from dotenv import load_dotenv
+
+
+def get_default_output_dir() -> str:
+    """Get default output directory based on platform"""
+    system = platform.system()
+    if system == "Darwin":
+        return os.path.join(os.path.expanduser("~/Documents"), "tts")
+    elif system == "Windows":
+        return os.path.join(os.environ.get("USERPROFILE", ""), "Documents", "tts")
+    else:
+        return os.path.join(os.path.expanduser("~/Documents"), "tts")
 
 
 # Helper to detect if running in Uvicorn's reloader
@@ -738,7 +750,7 @@ def generate_speech_from_api(
 ):
     """Generate speech from text using Orpheus model with performance optimizations."""
     if output_dir is None:
-        output_dir = os.environ.get("ORPHEUS_OUTPUT_DIR", "outputs")
+        output_dir = os.environ.get("ORPHEUS_OUTPUT_DIR", get_default_output_dir())
 
     print(
         f"Starting speech generation for '{prompt[:50]}{'...' if len(prompt) > 50 else ''}'"
@@ -1020,7 +1032,7 @@ def main():
 
     # Default output file if none provided
     output_file = args.output
-    output_dir = os.environ.get("ORPHEUS_OUTPUT_DIR", "outputs")
+    output_dir = os.environ.get("ORPHEUS_OUTPUT_DIR", get_default_output_dir())
     if not output_file:
         os.makedirs(output_dir, exist_ok=True)
         timestamp = time.strftime("%Y%m%d_%H%M%S")
