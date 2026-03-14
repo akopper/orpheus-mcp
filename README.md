@@ -1,10 +1,12 @@
 ![Orpheus-FASTAPI Banner](https://lex-au.github.io/Orpheus-FastAPI/Banner.png)
 
-# Orpheus-FASTAPI
+# Orpheus-MCP
 
-[![GitHub](https://img.shields.io/github/license/Lex-au/Orpheus-FastAPI)](https://github.com/Lex-au/Orpheus-FastAPI/blob/main/LICENSE.txt)
+[![GitHub](https://img.shields.io/github/license/akopper/orpheus-mcp)](https://github.com/akopper/orpheus-mcp/blob/main/LICENSE.txt)
 
-High-performance Text-to-Speech server with OpenAI-compatible API, multilingual support with 24 voices, emotion tags, and modern web UI. Optimized for RTX GPUs.
+> **Note:** This is a fork of [Orpheus-FastAPI](https://github.com/Lex-au/Orpheus-FastAPI) with added MCP (Model Context Protocol) server support for agentic TTS workflows.
+
+High-performance Text-to-Speech server with OpenAI-compatible API, multilingual support with 24 voices, emotion tags, and modern web UI. Optimized for RTX GPUs. Now with MCP server integration for AI agents and tools like Claude Desktop, mcporter, and opencode.
 
 ## Changelog
 
@@ -45,7 +47,18 @@ High-performance Text-to-Speech server with OpenAI-compatible API, multilingual 
 - 📊 Implemented detailed performance reporting for audio generation
 - ⚠️ Note: Python 3.12 is not supported due to removal of pkgutil.ImpImporter
 
-[GitHub Repository](https://github.com/Lex-au/Orpheus-FastAPI)
+[GitHub Repository](https://github.com/akopper/orpheus-mcp)
+
+## Fork Information
+
+This repository is a fork of the original [Orpheus-FastAPI](https://github.com/Lex-au/Orpheus-FastAPI) by Lex-au. This fork adds:
+
+- **MCP Server Support**: Full Model Context Protocol implementation for agentic workflows
+- **Auto-Setup Wrapper**: `run_mcp_server.sh` script with automatic venv and dependency management
+- **Agent Documentation**: Comprehensive `AGENTS.md` with best practices for AI agents
+- **Testing Suite**: Complete test suite and sample generation scripts
+
+The original FastAPI server and web UI remain fully functional and unchanged.
 
 ## Model Collection
 
