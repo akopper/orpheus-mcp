@@ -109,6 +109,8 @@ mcporter call orpheus-tts.generate_speech \
 
 ## Voice Selection
 
+**Important:** Select a voice that matches the language of your text. Using a voice with a different language than your text will result in poor pronunciation and unnatural speech.
+
 **English:** tara, leah, jess, leo, dan, mia, zac, zoe  
 **French:** pierre, amelie, marie  
 **German:** jana, thomas, max  
