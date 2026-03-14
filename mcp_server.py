@@ -163,21 +163,23 @@ class LlamaServerManager:
 
     def _find_llama_server(self) -> Optional[str]:
         """Find llama-server binary in common locations"""
-        # Check common paths
+        custom_path = os.environ.get("LLAMA_SERVER_PATH")
+        if (
+            custom_path
+            and os.path.isfile(custom_path)
+            and os.access(custom_path, os.X_OK)
+        ):
+            return custom_path
+
         paths = [
             "llama-server",
             "./llama-server",
-            "/usr/local/bin/llama-server",
-            "/opt/homebrew/bin/llama-server",
-            "/usr/bin/llama-server",
         ]
 
-        # Check if llama.cpp is in common build locations
         home = Path.home()
         build_paths = [
             home / "llama.cpp" / "build" / "bin" / "llama-server",
             home / "llama.cpp" / "llama-server",
-            Path("/usr/local/llama.cpp/llama-server"),
         ]
 
         all_paths = paths + [str(p) for p in build_paths]
@@ -185,7 +187,6 @@ class LlamaServerManager:
         for path in all_paths:
             if os.path.isfile(path) and os.access(path, os.X_OK):
                 return path
-            # Also check without .exe on Windows
             if os.path.isfile(path + ".exe"):
                 return path + ".exe"
 
