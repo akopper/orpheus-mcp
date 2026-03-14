@@ -279,21 +279,11 @@ async def handle_generate_speech(arguments: dict) -> List[TextContent]:
                 config.output_dir, f"speech_{voice}_{timestamp}.wav"
             )
 
-        # Generate speech
-        if streaming:
-            # For streaming, we return base64 chunks
-            # This is a simplified version - full implementation would stream
-            audio_segments = generate_speech_from_api(
-                prompt=text,
-                voice=voice,
-                output_file=output_path,
-            )
-        else:
-            audio_segments = generate_speech_from_api(
-                prompt=text,
-                voice=voice,
-                output_file=output_path,
-            )
+        # Generate speech in thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        audio_segments = await loop.run_in_executor(
+            None, generate_speech_from_api, text, voice, output_path
+        )
 
         # Get file size
         file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
