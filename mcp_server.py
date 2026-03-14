@@ -112,10 +112,16 @@ class LlamaServerManager:
         import requests
 
         try:
-            response = requests.get(
-                self.config.api_url.replace("/v1/completions", "/health"), timeout=2
+            response = requests.post(
+                self.config.api_url,
+                json={
+                    "prompt": "hi",
+                    "max_tokens": 1,
+                    "cache_prompt": False,
+                },
+                timeout=2,
             )
-            return response.status_code == 200
+            return response.status_code in (200, 400)
         except:
             return False
 
