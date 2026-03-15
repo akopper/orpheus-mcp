@@ -147,6 +147,7 @@ class ServerConfig:
     port: int = 5006
     output_dir: str = ""
     idle_timeout: int = 300  # seconds (5m default)
+    health_check_interval: int = 30  # seconds
 
 
 def get_config() -> ServerConfig:
@@ -158,27 +159,42 @@ def get_config() -> ServerConfig:
     idle_timeout_str = os.environ.get("ORPHEUS_IDLE_TIMEOUT", "5m")
     idle_timeout = parse_duration(idle_timeout_str, 300)
 
+    # Parse health check interval
+    health_check_str = os.environ.get("ORPHEUS_HEALTH_CHECK_INTERVAL", "30s")
+    health_check_interval = parse_duration(health_check_str, 30)
+
     return ServerConfig(
         api_url=os.environ.get(
             "ORPHEUS_API_URL", "http://127.0.0.1:1234/v1/completions"
         ),
         model_path=os.environ.get("ORPHEUS_MODEL_PATH"),
         llama_cpp_path=os.environ.get("ORPHEUS_LLAMA_CPP_PATH"),
-        auto_start_llama=os.environ.get("ORPHEUS_AUTO_START", "true").lower() == "true",
+        auto_start_llama=os.environ.get("ORPHEUS_AUTO_START_LLAMA", "true").lower()
+        == "true",
         transport=os.environ.get("MCP_TRANSPORT", "stdio"),
         port=int(os.environ.get("MCP_PORT", "5006")),
         output_dir=os.environ.get("ORPHEUS_OUTPUT_DIR", default_output),
         idle_timeout=idle_timeout,
+        health_check_interval=health_check_interval,
     )
 
 
 class LlamaServerManager:
-    """Manages the llama.cpp server lifecycle with idle timeout watchdog"""
+    """
+    Manages the llama.cpp server lifecycle with watchdog.
+
+    The watchdog owns the complete lifecycle:
+    - FORKS llama-server on startup (non-blocking)
+    - Monitors health continuously
+    - Stops on idle timeout
+    - Restarts on failure
+
+    MCP server just connects to localhost - doesn't manage the process.
+    """
 
     def __init__(self, config: ServerConfig):
         self.config = config
         self.process: Optional[subprocess.Popen] = None
-        self.server_ready = False
         self.pid_file = "/tmp/llama-server.pid"
         self.last_request_time: float = 0  # timestamp of last request
         self._watchdog_running = False
@@ -189,7 +205,15 @@ class LlamaServerManager:
         self.last_request_time = time.time()
 
     def start_watchdog(self):
-        """Start the idle timeout watchdog thread"""
+        """
+        Start the watchdog thread that owns llama-server lifecycle.
+
+        The watchdog will:
+        1. Fork llama-server (non-blocking, no wait for ready)
+        2. Monitor health continuously
+        3. Handle idle timeout
+        4. Restart on failure
+        """
         if self._watchdog_running:
             return
 
@@ -198,18 +222,116 @@ class LlamaServerManager:
             target=self._watchdog_loop, daemon=True, name="llama-server-watchdog"
         )
         self._watchdog_thread.start()
-        print("✓ Idle timeout watchdog started", file=sys.stderr)
+        print("✓ Llama-server watchdog started", file=sys.stderr)
 
     def stop_watchdog(self):
-        """Stop the idle timeout watchdog thread"""
+        """Stop the watchdog thread and clean up llama-server"""
         self._watchdog_running = False
         if self._watchdog_thread:
             self._watchdog_thread.join(timeout=2)
             self._watchdog_thread = None
 
+    def _fork_llama_server(self) -> bool:
+        """
+        Fork llama-server process (non-blocking).
+
+        Just spawns the process and returns immediately.
+        No waiting for server to be ready.
+
+        Returns:
+            True if process was spawned, False otherwise
+        """
+        if not self.config.model_path:
+            print("✗ ORPHEUS_MODEL_PATH not set", file=sys.stderr)
+            return False
+
+        if not os.path.exists(self.config.model_path):
+            print(f"✗ Model not found: {self.config.model_path}", file=sys.stderr)
+            return False
+
+        # Find llama-server binary
+        llama_server = self.config.llama_cpp_path or self._find_llama_server()
+        if not llama_server:
+            print("✗ llama-server binary not found", file=sys.stderr)
+            return False
+
+        # Build command
+        cmd = [
+            llama_server,
+            "-m",
+            self.config.model_path,
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "1234",
+            "-ngl",
+            "99",
+        ]
+
+        print(f"Forking llama-server (non-blocking)...", file=sys.stderr)
+        try:
+            self.process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self._write_pid_file(self.process.pid)
+            print(f"✓ llama-server forked (PID: {self.process.pid})", file=sys.stderr)
+            return True
+
+        except Exception as e:
+            print(f"✗ Failed to fork llama-server: {e}", file=sys.stderr)
+            return False
+
+    def _check_health(self) -> bool:
+        """Check if llama-server is healthy (responding to requests)"""
+        import requests
+
+        try:
+            response = requests.get(
+                f"{self.config.api_url.replace('/v1/completions', '/v1/models')}",
+                timeout=5,
+            )
+            return response.status_code == 200
+        except:
+            return False
+
+    def _is_process_alive(self) -> bool:
+        """Check if the llama-server process is still running"""
+        if self.process:
+            return self.process.poll() is None
+        # Check PID file
+        pid = self._get_pid_from_file()
+        if pid:
+            try:
+                os.kill(pid, 0)
+                return True
+            except OSError:
+                pass
+        return False
+
+    def _restart_llama_server(self):
+        """Restart llama-server (stop and fork again)"""
+        print("↻ Restarting llama-server...", file=sys.stderr)
+        self.stop_server()
+        time.sleep(1)
+        self._fork_llama_server()
+
     def _watchdog_loop(self):
-        """Background loop that checks idle timeout"""
-        check_interval = 30  # Check every 30 seconds
+        """
+        Main watchdog loop - owns complete llama-server lifecycle.
+
+        Runs continuously:
+        1. On first run: fork llama-server (if auto_start enabled)
+        2. Every interval: health check
+        3. Check idle timeout
+        4. Handle process failure
+        """
+        # Phase 1: Initial fork (non-blocking)
+        if self.config.auto_start_llama:
+            self._fork_llama_server()
+
+        check_interval = self.config.health_check_interval
 
         while self._watchdog_running:
             time.sleep(check_interval)
@@ -217,10 +339,28 @@ class LlamaServerManager:
             if not self._watchdog_running:
                 break
 
-            # Check if we should stop the server due to idle
-            if self.last_request_time > 0 and self.process is not None:
-                idle_seconds = time.time() - self.last_request_time
+            # Check if process is alive
+            process_alive = self._is_process_alive()
 
+            # Check if server is healthy
+            server_healthy = False
+            if process_alive:
+                server_healthy = self._check_health()
+
+            # Decision: restart if not healthy
+            if not server_healthy:
+                if process_alive:
+                    print(
+                        "⚠ llama-server not responding, restarting...", file=sys.stderr
+                    )
+                else:
+                    print("⚠ llama-server process died, restarting...", file=sys.stderr)
+                self._restart_llama_server()
+                continue
+
+            # Check idle timeout (only if we have received requests)
+            if self.last_request_time > 0:
+                idle_seconds = time.time() - self.last_request_time
                 if idle_seconds >= self.config.idle_timeout:
                     idle_minutes = idle_seconds / 60
                     timeout_minutes = self.config.idle_timeout / 60
@@ -231,6 +371,10 @@ class LlamaServerManager:
                     )
                     self.stop_server()
                     print("✓ llama-server stopped due to idle timeout", file=sys.stderr)
+
+        # Cleanup on exit
+        print("Watchdog shutting down, stopping llama-server...", file=sys.stderr)
+        self.stop_server()
 
     def _get_pid_from_file(self) -> Optional[int]:
         """Read PID from file"""
@@ -517,6 +661,23 @@ async def handle_generate_speech(
                 text=f"Error: Invalid voice '{voice}'. Use list_voices to see available options.",
             )
         ]
+
+    # Check if server is running, trigger restart if not
+    if server_manager and not server_manager.is_server_running():
+        print("Server not running, triggering restart...", file=sys.stderr)
+        server_manager._restart_llama_server()
+        # Wait briefly for server to start
+        for _ in range(10):
+            await asyncio.sleep(1)
+            if server_manager.is_server_running():
+                print("Server is now ready", file=sys.stderr)
+                break
+        else:
+            return [
+                TextContent(
+                    type="text", text="Error: llama-server not ready. Please retry."
+                )
+            ]
 
     try:
         # Ensure output directory exists
@@ -996,21 +1157,17 @@ async def app_lifespan():
 
     config = get_config()
 
-    # Start llama.cpp server if needed
-    if config.auto_start_llama:
-        server_manager = LlamaServerManager(config)
-        # Start the idle timeout watchdog
-        server_manager.start_watchdog()
-        if not server_manager.start_server():
-            print("⚠️ Warning: Could not start llama.cpp server", file=sys.stderr)
-            print("  Make sure ORPHEUS_MODEL_PATH is set correctly", file=sys.stderr)
+    # Create manager and start watchdog (owns complete llama-server lifecycle)
+    server_manager = LlamaServerManager(config)
+    server_manager.start_watchdog()
+    # Watchdog will fork llama-server on its next cycle (non-blocking)
+    # MCP server starts immediately without waiting for llama-server
 
     yield
 
-    # Cleanup
+    # Cleanup: watchdog.stop() handles stopping llama-server
     if server_manager:
         server_manager.stop_watchdog()
-        server_manager.stop_server()
 
 
 async def main():
