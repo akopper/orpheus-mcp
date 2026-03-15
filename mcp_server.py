@@ -666,13 +666,14 @@ async def handle_generate_speech(
     if server_manager and not server_manager.is_server_running():
         print("Server not running, triggering restart...", file=sys.stderr)
         server_manager._restart_llama_server()
-        # Wait briefly for server to start
-        for _ in range(10):
+        # Wait for server to become ready (up to 60 seconds for model to load)
+        for i in range(60):
             await asyncio.sleep(1)
             if server_manager.is_server_running():
-                print("Server is now ready", file=sys.stderr)
+                print(f"Server is now ready (waited {i + 1}s)", file=sys.stderr)
                 break
         else:
+            print("Server failed to become ready after 60s", file=sys.stderr)
             return [
                 TextContent(
                     type="text", text="Error: llama-server not ready. Please retry."
