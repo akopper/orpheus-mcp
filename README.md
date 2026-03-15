@@ -18,9 +18,9 @@ Orpheus-MCP provides text-to-speech capabilities through the Model Context Proto
 
 ### Prerequisites
 
-- Python 3.11
+- Python 3.11+
 - llama.cpp server binary
-- Orpheus model file (~3.8GB)
+- Orpheus model file (~3-4GB)
 
 ### 1. Install llama.cpp
 
@@ -37,27 +37,51 @@ cmake --build build --config Release -j 8
 
 ### 2. Download Model
 
+Download an Orpheus model from Hugging Face:
+
+| Model | Link | Size |
+|-------|------|------|
+| Orpheus-3b (Official) | [huggingface.co/baseten/orpheus-3b-0.1-ft](https://huggingface.co/baseten/orpheus-3b-0.1-ft) | ~4GB |
+| Orpheus-3b-FT-Q8_0 (Quantized) | [huggingface.co/lex-au/Orpheus-3b-FT-Q8_0.gguf](https://huggingface.co/lex-au/Orpheus-3b-FT-Q8_0.gguf) | ~3.8GB |
+| Orpheus-3b-0.1-ft-UD-Q8_K_XL | [huggingface.co/akocop/orpheus-3b-0.1-ft-UD-Q8_K_XL.gguf](https://huggingface.co/akocop/orpheus-3b-0.1-ft-UD-Q8_K_XL.gguf) | ~3.8GB |
+
 ```bash
+# Option 1: Download official model (requires conversion)
 mkdir -p models
-wget https://huggingface.co/lex-au/Orpheus-3b-FT-Q8_0.gguf/resolve/main/Orpheus-3b-FT-Q8_0.gguf -P models/
+wget https://huggingface.co/baseten/orpheus-3b-0.1-ft/resolve/main/model-00001-of-00085.safetensors -P models/
+
+# Option 2: Download pre-quantized GGUF (recommended - works out of box)
+mkdir -p models
+wget https://huggingface.co/lex-au/Orpheus-3b-FT-Q8_0.gguf -O models/Orpheus-3b-FT-Q8_0.gguf
 ```
 
-### 3. Configure
+### 3. Configure mcporter
 
-Set environment variables:
-```bash
-export ORPHEUS_MODEL_PATH=/path/to/Orpheus-3b-FT-Q8_0.gguf
-export ORPHEUS_LLAMA_CPP_PATH=/path/to/llama-server
+Add to `~/.mcporter/mcporter.json`:
+
+```json
+{
+  "mcpServers": {
+    "orpheus-tts": {
+      "command": "/path/to/orpheus-mcp/run_mcp_server.sh",
+      "env": {
+        "ORPHEUS_MODEL_PATH": "/path/to/models/orpheus-3b-0.1-ft-UD-Q8_K_XL.gguf",
+        "ORPHEUS_LLAMA_CPP_PATH": "/path/to/llama.cpp/build/bin/llama-server"
+      }
+    }
+  }
+}
 ```
 
 ### 4. Run
 
 ```bash
-./run_mcp_server.sh
+# Test it works
+mcporter call orpheus-tts.list_voices
 ```
 
-The wrapper script automatically:
-- Creates Python virtual environment
+The wrapper script (`run_mcp_server.sh`) automatically:
+- Creates Python virtual environment (if needed)
 - Installs dependencies
 - Starts llama.cpp server
 - Runs MCP server
@@ -134,12 +158,16 @@ Add to `~/.mcporter/mcporter.json`:
     "orpheus-tts": {
       "command": "/path/to/orpheus-mcp/run_mcp_server.sh",
       "env": {
-        "ORPHEUS_MODEL_PATH": "/path/to/Orpheus-3b-FT-Q8_0.gguf"
+        "ORPHEUS_MODEL_PATH": "/path/to/Orpheus-3b-FT-Q8_0.gguf",
+        "ORPHEUS_IDLE_TIMEOUT": "5m",
+        "ORPHEUS_STREAM_TIMEOUT": "15s"
       }
     }
   }
 }
 ```
+
+**Note:** The mcporter daemon (`lifecycle: "keep-alive"`) requires ALL servers in your config to start successfully. If any server (like jira, etc.) fails to start, the entire daemon fails. For now, use the default ephemeral mode - the MCP server will start on demand.
 
 ### Claude Desktop
 
@@ -202,27 +230,14 @@ orpheus-mcp/
 
 On slower hardware (CPU-only or older GPUs), token generation may be slow enough that the stream liveness timeout triggers. If you experience timeouts on longer texts:
 
-1. Increase `ORPHEUS_STREAM_TIMEOUT` (e.g., 30 or 60 seconds)
+1. Increase `ORPHEUS_STREAM_TIMEOUT` (e.g., `30s`, `1m`)
 2. Use shorter text chunks via the `estimate_tokens` tool to plan chunking
 
-### mcporter keep-alive
+### mcporter Daemon Limitation
 
-When using mcporter, add `"lifecycle": "keep-alive"` to prevent server restarts between requests:
+The mcporter daemon (`"lifecycle": "keep-alive"`) requires ALL servers in your config to start successfully. If any server (like jira, etc.) fails to start, the entire daemon fails. 
 
-```json
-{
-  "mcpServers": {
-    "orpheus-tts": {
-      "command": "/path/to/orpheus-mcp/run_mcp_server.sh",
-      "env": {
-        "ORPHEUS_MODEL_PATH": "/path/to/Orpheus-3b-FT-Q8_0.gguf",
-        "ORPHEUS_IDLE_TIMEOUT": "5"
-      },
-      "lifecycle": "keep-alive"
-    }
-  }
-}
-```
+Use default ephemeral mode instead - the MCP server starts on demand and the idle timeout watchdog manages llama-server lifecycle automatically.
 
 ## License
 

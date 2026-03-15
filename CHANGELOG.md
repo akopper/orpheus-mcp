@@ -17,11 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Supports duration strings: `300`, `5m`, `1h30m`, etc.
   - Frees system resources (RAM/VRAM) when not in use
   - Server automatically restarts on next request
-- Support for mcporter daemon with `lifecycle: "keep-alive"` configuration
 - Duration string parsing utility for flexible timeout configuration
   - Follows Ollama/Docker conventions
+- Integration tests for stability features
 
 ### Changed
+- Updated README with better onboarding instructions
+- Added model download links (Hugging Face)
+- Improved documentation for mcporter configuration
+- Added warning about mcporter daemon limitation
+
+### Fixed
 - Fail-fast error handling: removed retry logic for cleaner failure handling
   - Client should handle retries if needed
 - Better error messages for stream timeout and idle timeout conditions
