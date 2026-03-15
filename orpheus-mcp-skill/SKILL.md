@@ -7,6 +7,21 @@ description: Use this skill when the user wants to generate speech or audio usin
 
 This skill provides instructions for using the Orpheus TTS MCP server with mcporter to generate speech and audio.
 
+## Prerequisites
+
+**Before using any TTS tools, you must start llama-server manually:**
+
+```bash
+# Start llama-server with your model (choose one)
+llama-server -m /path/to/Orpheus-3b-FT-Q8_0.gguf --port 1234 -ngl 99
+
+# Or with a custom API URL endpoint
+llama-server -m /path/to/model.gguf --port 1234 -ngl 99
+ORPHEUS_API_URL=http://127.0.0.1:1234/v1/completions
+```
+
+The server must be running at the configured endpoint (default: `http://127.0.0.1:1234/v1/completions`) before calling generate_speech.
+
 ## Quick Reference
 
 ```bash
@@ -189,7 +204,8 @@ mcporter call orpheus-tts.generate_speech text="[FEMALE CHARACTER]" voice=leah o
 
 | Error | Solution |
 |-------|----------|
-| "Server not ready" | Wait 5 seconds and retry |
+| "llama-server not running" | Start llama-server manually before use (see Prerequisites) |
+| "Connection refused" | Check llama-server is running at the configured endpoint |
 | "Timeout" | Split text into smaller chunks |
 | "Invalid voice" | Run `list_voices` to get valid options |
 | "Model not found" | Check ORPHEUS_MODEL_PATH environment variable |
@@ -219,7 +235,7 @@ mcporter call orpheus-tts.generate_speech \
 
 ## Environment Variables
 
-- `ORPHEUS_MODEL_PATH` - Path to Orpheus GGUF model (required)
-- `ORPHEUS_LLAMA_CPP_PATH` - Path to llama-server binary (optional)
+- `ORPHEUS_API_URL` - llama-server endpoint (default: http://127.0.0.1:1234/v1/completions)
+- `ORPHEUS_MODEL_PATH` - Path to Orpheus GGUF model (for your reference, llama-server needs it)
 - `ORPHEUS_OUTPUT_DIR` - Output directory (default: ~/Documents/tts)
 - `MCP_TRANSPORT` - stdio or sse (default: stdio)

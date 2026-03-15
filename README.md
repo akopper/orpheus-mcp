@@ -11,7 +11,6 @@ Orpheus-MCP provides text-to-speech capabilities through the Model Context Proto
 - **25 Voices**: 8 languages including English, French, German, Korean, Hindi, Mandarin, Spanish, Italian
 - **Emotion Tags**: Add `<laugh>`, `<sigh>`, `<chuckle>`, and more for expressive speech
 - **MCP Integration**: Works with any MCP-compatible client
-- **Auto-Setup**: Wrapper script handles virtual environment and dependencies automatically
 - **Standalone**: Runs offline with local llama.cpp inference
 
 ## Quick Start
@@ -55,7 +54,18 @@ mkdir -p models
 wget https://huggingface.co/lex-au/Orpheus-3b-FT-Q8_0.gguf -O models/Orpheus-3b-FT-Q8_0.gguf
 ```
 
-### 3. Configure mcporter
+### 3. Start llama-server
+
+**Before using the MCP server, start llama-server manually:**
+
+```bash
+# In terminal 1: Start llama-server
+llama-server -m models/Orpheus-3b-FT-Q8_0.gguf --port 1234 -ngl 99
+```
+
+The server must be running at `http://127.0.0.1:1234/v1/completions` before calling generate_speech.
+
+### 4. Configure mcporter
 
 Add to `~/.mcporter/mcporter.json`:
 
@@ -65,26 +75,23 @@ Add to `~/.mcporter/mcporter.json`:
     "orpheus-tts": {
       "command": "/path/to/orpheus-mcp/run_mcp_server.sh",
       "env": {
-        "ORPHEUS_MODEL_PATH": "/path/to/models/orpheus-3b-0.1-ft-UD-Q8_K_XL.gguf",
-        "ORPHEUS_LLAMA_CPP_PATH": "/path/to/llama.cpp/build/bin/llama-server"
+        "ORPHEUS_MODEL_PATH": "/path/to/models/Orpheus-3b-FT-Q8_0.gguf",
+        "ORPHEUS_API_URL": "http://127.0.0.1:1234/v1/completions"
       }
     }
   }
 }
 ```
 
-### 4. Run
+### 5. Run
 
 ```bash
 # Test it works
 mcporter call orpheus-tts.list_voices
-```
 
-The wrapper script (`run_mcp_server.sh`) automatically:
-- Creates Python virtual environment (if needed)
-- Installs dependencies
-- Starts llama.cpp server
-- Runs MCP server
+# Generate speech (llama-server must be running)
+mcporter call orpheus-tts.generate_speech text="Hello world" voice=tara
+```
 
 ## MCP Tools
 
@@ -159,15 +166,14 @@ Add to `~/.mcporter/mcporter.json`:
       "command": "/path/to/orpheus-mcp/run_mcp_server.sh",
       "env": {
         "ORPHEUS_MODEL_PATH": "/path/to/Orpheus-3b-FT-Q8_0.gguf",
-        "ORPHEUS_IDLE_TIMEOUT": "5m",
-        "ORPHEUS_STREAM_TIMEOUT": "15s"
+        "ORPHEUS_API_URL": "http://127.0.0.1:1234/v1/completions"
       }
     }
   }
 }
 ```
 
-**Note:** The mcporter daemon (`lifecycle: "keep-alive"`) requires ALL servers in your config to start successfully. If any server (like jira, etc.) fails to start, the entire daemon fails. For now, use the default ephemeral mode - the MCP server will start on demand.
+**Important:** llama-server must be running before using the MCP server. The MCP server no longer manages llama-server lifecycle.
 
 ### Claude Desktop
 
@@ -214,30 +220,19 @@ orpheus-mcp/
 
 ## Environment Variables
 
-- `ORPHEUS_MODEL_PATH` - Path to Orpheus GGUF model (required)
-- `ORPHEUS_LLAMA_CPP_PATH` - Path to llama-server binary (optional, auto-detected)
+- `ORPHEUS_API_URL` - llama-server endpoint (default: http://127.0.0.1:1234/v1/completions)
+- `ORPHEUS_MODEL_PATH` - Path to Orpheus GGUF model (for your reference)
 - `ORPHEUS_OUTPUT_DIR` - Output directory (default: ~/Documents/tts)
-- `ORPHEUS_IDLE_TIMEOUT` - Idle timeout before stopping llama-server (default: 5m)
-  - Supports duration strings: `300`, `5m`, `1h30m`, etc.
 - `ORPHEUS_STREAM_TIMEOUT` - Stream liveness timeout (default: 15s)
   - Supports duration strings: `15`, `15s`, `1m30s`, etc.
-- `ORPHEUS_AUTO_START` - Auto-start llama-server (default: true)
 - `MCP_TRANSPORT` - Transport type: stdio or sse (default: stdio)
 
-## Pitfalls
+## Troubleshooting
 
-### Slow Hardware
-
-On slower hardware (CPU-only or older GPUs), token generation may be slow enough that the stream liveness timeout triggers. If you experience timeouts on longer texts:
-
-1. Increase `ORPHEUS_STREAM_TIMEOUT` (e.g., `30s`, `1m`)
-2. Use shorter text chunks via the `estimate_tokens` tool to plan chunking
-
-### mcporter Daemon Limitation
-
-The mcporter daemon (`"lifecycle": "keep-alive"`) requires ALL servers in your config to start successfully. If any server (like jira, etc.) fails to start, the entire daemon fails. 
-
-Use default ephemeral mode instead - the MCP server starts on demand and the idle timeout watchdog manages llama-server lifecycle automatically.
+| Error | Solution |
+|-------|----------|
+| "llama-server not running" | Start llama-server manually before use |
+| "Connection refused" | Check llama-server is running at the configured endpoint |
 
 ## License
 

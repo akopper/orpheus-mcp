@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Breaking:** Removed automatic llama-server management
+  - llama-server must be started manually before using the MCP server
+  - Fail-fast with clear error message if llama-server not reachable
+  - Simplified configuration (removed `ORPHEUS_AUTO_START_LLAMA`, `ORPHEUS_IDLE_TIMEOUT`, `ORPHEUS_HEALTH_CHECK_INTERVAL`)
+- Updated all documentation to reflect manual llama-server requirement
+- Updated mcporter config with `ORPHEUS_API_URL` env var
+
+### Added
+- `ORPHEUS_API_URL` env var for configurable llama-server endpoint
+
+## [0.2.0] - Stability Improvements
+
 ### Added
 - Stream liveness timeout to prevent hanging requests when the token stream stalls
   - Configurable via `ORPHEUS_STREAM_TIMEOUT` (default: 15 seconds)
@@ -31,8 +44,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fail-fast error handling: removed retry logic for cleaner failure handling
   - Client should handle retries if needed
 - Better error messages for stream timeout and idle timeout conditions
-
-### Fixed
 - Fixed issue where requests would hang indefinitely while files were being created
   - Stream now has explicit liveness monitoring
   - Partial results are treated as errors (no silent failures)

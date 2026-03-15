@@ -5,10 +5,11 @@
       "args": [],
       "env": {
         "ORPHEUS_MODEL_PATH": "${ORPHEUS_MODEL_PATH}",
-        "ORPHEUS_LLAMA_CPP_PATH": "${ORPHEUS_LLAMA_CPP_PATH}",
+        "ORPHEUS_API_URL": "${ORPHEUS_API_URL}",
         "MCP_TRANSPORT": "stdio"
       },
-      "description": "Orpheus TTS MCP Server - Generate speech and audiobooks with 25 voices across 8 languages",
+      "description": "Orpheus TTS MCP Server - Generate speech and audiobooks with 25 voices across 8 languages. Requires llama-server running separately.",
+      "lifecycle": "on-demand",
       "tools": [
         {
           "name": "generate_speech",
