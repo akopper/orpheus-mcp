@@ -87,5 +87,12 @@ else
     echo "✓ Requirements already satisfied"
 fi
 
+# Load environment variables from .env file if it exists
+if [ -f "${SCRIPT_DIR}/.env" ]; then
+    set -a
+    source "${SCRIPT_DIR}/.env"
+    set +a
+fi
+
 # Run the MCP server with all arguments passed through
 exec python3 "${SCRIPT_DIR}/mcp_server.py" "$@"
