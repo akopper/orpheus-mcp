@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import requests
 import json
 import time
@@ -14,6 +15,54 @@ import platform
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Any, Optional, Generator, Union, Tuple
 from dotenv import load_dotenv
+
+
+def parse_duration(value: Optional[str], default_seconds: int) -> int:
+    """
+    Parse duration string to seconds.
+
+    Supports formats:
+    - Plain number: "300" -> 300 seconds
+    - With suffix: "5m" -> 300 seconds, "30s" -> 30 seconds, "1h" -> 3600 seconds
+    - Mixed: "1h30m" -> 5400 seconds
+
+    Args:
+        value: Duration string to parse (can be None or empty)
+        default_seconds: Default value if parsing fails
+
+    Returns:
+        Duration in seconds
+    """
+    if not value:
+        return default_seconds
+
+    # Try plain number first (backward compatibility)
+    try:
+        return int(value)
+    except ValueError:
+        pass
+
+    # Parse duration string (e.g., "5m", "30s", "1h30m")
+    total_seconds = 0
+    pattern = r"(\d+)([smh])"
+    matches = re.findall(pattern, value.lower())
+
+    if not matches:
+        print(
+            f"WARNING: Invalid duration format '{value}', using default {default_seconds}s"
+        )
+        return default_seconds
+
+    for num, unit in matches:
+        num = int(num)
+        if unit == "s":
+            total_seconds += num
+        elif unit == "m":
+            total_seconds += num * 60
+        elif unit == "h":
+            total_seconds += num * 3600
+
+    return total_seconds if total_seconds > 0 else default_seconds
 
 
 def get_default_output_dir() -> str:
@@ -141,6 +190,10 @@ try:
 except (ValueError, TypeError):
     print("WARNING: Invalid ORPHEUS_SAMPLE_RATE value, using 24000 as fallback")
     SAMPLE_RATE = 24000
+
+# Stream liveness timeout - prevents hanging when stream stalls
+# Supports: "15" (seconds), "15s", "1m30s", etc.
+STREAM_TIMEOUT = parse_duration(os.environ.get("ORPHEUS_STREAM_TIMEOUT", "15"), 15)
 
 # Print loaded configuration only in the main process, not in the reloader
 if not IS_RELOADER:
@@ -307,101 +360,90 @@ def generate_tokens_from_api(
     model_name = os.environ.get("ORPHEUS_MODEL_NAME", "Orpheus-3b-FT-Q8_0.gguf")
     payload["model"] = model_name
 
-    # Session for connection pooling and retry logic
+    # Session for connection pooling
     session = requests.Session()
 
-    retry_count = 0
-    max_retries = 3
+    # Fail fast - no retries per design decision
+    try:
+        # Make the API request with streaming and timeout
+        response = session.post(
+            API_URL,
+            headers=HEADERS,
+            json=payload,
+            stream=True,
+            timeout=REQUEST_TIMEOUT,
+        )
 
-    while retry_count < max_retries:
-        try:
-            # Make the API request with streaming and timeout
-            response = session.post(
-                API_URL,
-                headers=HEADERS,
-                json=payload,
-                stream=True,
-                timeout=REQUEST_TIMEOUT,
-            )
+        if response.status_code != 200:
+            print(f"Error: API request failed with status code {response.status_code}")
+            print(f"Error details: {response.text}")
+            return
 
-            if response.status_code != 200:
+        # Process the streamed response with stream liveness monitoring
+        buffer = ""
+        token_counter = 0
+        last_token_time = time.time()
+        stream_start_time = time.time()
+
+        # Iterate through the response to get tokens
+        for line in response.iter_lines():
+            # Check stream liveness - timeout if no tokens received for STREAM_TIMEOUT seconds
+            elapsed_since_last_token = time.time() - last_token_time
+            if elapsed_since_last_token > STREAM_TIMEOUT:
                 print(
-                    f"Error: API request failed with status code {response.status_code}"
+                    f"Stream timeout: No tokens received for {STREAM_TIMEOUT} seconds. "
+                    f"Stream may have stalled. Stopping generation."
                 )
-                print(f"Error details: {response.text}")
-                # Retry on server errors (5xx) but not on client errors (4xx)
-                if response.status_code >= 500:
-                    retry_count += 1
-                    wait_time = 2**retry_count  # Exponential backoff
-                    print(f"Retrying in {wait_time} seconds...")
-                    time.sleep(wait_time)
-                    continue
-                return
+                break
 
-            # Process the streamed response with better buffering
-            buffer = ""
-            token_counter = 0
+            if line:
+                line_str = line.decode("utf-8")
+                if line_str.startswith("data: "):
+                    data_str = line_str[6:]  # Remove the 'data: ' prefix
 
-            # Iterate through the response to get tokens
-            for line in response.iter_lines():
-                if line:
-                    line_str = line.decode("utf-8")
-                    if line_str.startswith("data: "):
-                        data_str = line_str[6:]  # Remove the 'data: ' prefix
+                    if data_str.strip() == "[DONE]":
+                        break
 
-                        if data_str.strip() == "[DONE]":
-                            break
+                    try:
+                        data = json.loads(data_str)
+                        if "choices" in data and len(data["choices"]) > 0:
+                            token_chunk = data["choices"][0].get("text", "")
+                            for token_text in token_chunk.split(">"):
+                                token_text = f"{token_text}>"
+                                token_counter += 1
+                                perf_monitor.add_tokens()
+                                last_token_time = time.time()  # Update last token time
 
-                        try:
-                            data = json.loads(data_str)
-                            if "choices" in data and len(data["choices"]) > 0:
-                                token_chunk = data["choices"][0].get("text", "")
-                                for token_text in token_chunk.split(">"):
-                                    token_text = f"{token_text}>"
-                                    token_counter += 1
-                                    perf_monitor.add_tokens()
+                                if token_text:
+                                    yield token_text
+                    except json.JSONDecodeError as e:
+                        print(f"Error decoding JSON: {e}")
+                        continue
 
-                                    if token_text:
-                                        yield token_text
-                        except json.JSONDecodeError as e:
-                            print(f"Error decoding JSON: {e}")
-                            continue
-
-            # Generation completed successfully
-            generation_time = time.time() - start_time
-            tokens_per_second = (
-                token_counter / generation_time if generation_time > 0 else 0
-            )
+        # Generation completed (either naturally or via timeout)
+        generation_time = time.time() - start_time
+        tokens_per_second = (
+            token_counter / generation_time if generation_time > 0 else 0
+        )
+        if token_counter > 0:
             print(
                 f"Token generation complete: {token_counter} tokens in {generation_time:.2f}s ({tokens_per_second:.1f} tokens/sec)"
             )
-            return
+        else:
+            print(
+                f"Token generation stopped: No tokens generated in {generation_time:.2f}s"
+            )
+        return
 
-        except requests.exceptions.Timeout:
-            print(f"Request timed out after {REQUEST_TIMEOUT} seconds")
-            retry_count += 1
-            if retry_count < max_retries:
-                wait_time = 2**retry_count
-                print(
-                    f"Retrying in {wait_time} seconds... (attempt {retry_count + 1}/{max_retries})"
-                )
-                time.sleep(wait_time)
-            else:
-                print("Max retries reached. Token generation failed.")
-                return
+    except requests.exceptions.Timeout:
+        print(
+            f"Request timed out after {REQUEST_TIMEOUT} seconds. Token generation failed."
+        )
+        return
 
-        except requests.exceptions.ConnectionError:
-            print(f"Connection error to API at {API_URL}")
-            retry_count += 1
-            if retry_count < max_retries:
-                wait_time = 2**retry_count
-                print(
-                    f"Retrying in {wait_time} seconds... (attempt {retry_count + 1}/{max_retries})"
-                )
-                time.sleep(wait_time)
-            else:
-                print("Max retries reached. Token generation failed.")
-                return
+    except requests.exceptions.ConnectionError:
+        print(f"Connection error to API at {API_URL}. Token generation failed.")
+        return
 
 
 # The turn_token_into_id function is now imported from speechpipe.py

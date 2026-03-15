@@ -276,3 +276,57 @@ Add to `claude_desktop_config.json`:
 - The server auto-starts llama.cpp if not already running
 - Generated files persist in ~/Documents/tts/ directory by default
 - Use absolute paths for output_path to avoid confusion
+
+## Stability & Lifecycle
+
+### Stream Timeout (Pitfall)
+
+The service includes a stream liveness timeout to prevent hanging requests. If no tokens are received for 15 seconds (configurable via `ORPHEUS_STREAM_TIMEOUT`), generation stops and returns an error. This can affect slow hardware - see README for details.
+
+**Duration format**: Supports `15`, `15s`, `1m30s`, etc. (follows Ollama/Docker conventions)
+
+### Idle Resource Management
+
+The service automatically manages llama-server lifecycle:
+- Stops llama-server after 5 minutes of inactivity (configurable via `ORPHEUS_IDLE_TIMEOUT`)
+- Automatically restarts on next request
+- This frees RAM/VRAM when not in use
+
+**Duration format**: Supports `300`, `5m`, `1h30m`, etc.
+
+### mcporter Integration
+
+For best experience with mcporter, use `lifecycle: "keep-alive"`:
+
+```json
+{
+  "mcpServers": {
+    "orpheus-tts": {
+      "command": "python",
+      "args": ["/path/to/mcp_server.py"],
+      "env": {
+        "ORPHEUS_MODEL_PATH": "/path/to/model.gguf",
+        "ORPHEUS_IDLE_TIMEOUT": "5"
+      },
+      "lifecycle": "keep-alive"
+    }
+  }
+}
+```
+
+### Error Handling
+
+The service uses fail-fast error handling:
+- No automatic retries - client should handle retries if needed
+- Partial results are treated as errors
+- Clear error messages for timeout conditions
+
+## Changelog
+
+**IMPORTANT**: Update CHANGELOG.md with every significant change. Include:
+- New features
+- Bug fixes
+- Breaking changes
+- Configuration changes
+
+Use semantic versioning and keep the Unreleased section at the top.

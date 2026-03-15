@@ -26,10 +26,61 @@ import asyncio
 import subprocess
 import tempfile
 import platform
+import threading
+import re
 from pathlib import Path
-from typing import Optional, List, Dict, Any, AsyncGenerator
+from typing import Optional, List, Dict, Any, AsyncGenerator, Union
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+
+
+def parse_duration(value: Optional[str], default_seconds: int) -> int:
+    """
+    Parse duration string to seconds.
+
+    Supports formats:
+    - Plain number: "300" -> 300 seconds
+    - With suffix: "5m" -> 300 seconds, "30s" -> 30 seconds, "1h" -> 3600 seconds
+    - Mixed: "1h30m" -> 5400 seconds
+
+    Args:
+        value: Duration string to parse (can be None or empty)
+        default_seconds: Default value if parsing fails
+
+    Returns:
+        Duration in seconds
+    """
+    if not value:
+        return default_seconds
+
+    # Try plain number first (backward compatibility)
+    try:
+        return int(value)
+    except ValueError:
+        pass
+
+    # Parse duration string (e.g., "5m", "30s", "1h30m")
+    total_seconds = 0
+    pattern = r"(\d+)([smh])"
+    matches = re.findall(pattern, value.lower())
+
+    if not matches:
+        print(
+            f"WARNING: Invalid duration format '{value}', using default {default_seconds}s"
+        )
+        return default_seconds
+
+    for num, unit in matches:
+        num = int(num)
+        if unit == "s":
+            total_seconds += num
+        elif unit == "m":
+            total_seconds += num * 60
+        elif unit == "h":
+            total_seconds += num * 3600
+
+    return total_seconds if total_seconds > 0 else default_seconds
+
 
 from dotenv import load_dotenv
 from mcp.server import Server
@@ -95,11 +146,18 @@ class ServerConfig:
     transport: str = "stdio"
     port: int = 5006
     output_dir: str = ""
+    idle_timeout: int = 300  # seconds (5m default)
 
 
 def get_config() -> ServerConfig:
     """Load configuration from environment variables"""
     default_output = get_default_output_dir()
+
+    # Parse idle timeout using duration string (e.g., "5m", "300", "1h")
+    # Default: 5 minutes (300 seconds)
+    idle_timeout_str = os.environ.get("ORPHEUS_IDLE_TIMEOUT", "5m")
+    idle_timeout = parse_duration(idle_timeout_str, 300)
+
     return ServerConfig(
         api_url=os.environ.get(
             "ORPHEUS_API_URL", "http://127.0.0.1:1234/v1/completions"
@@ -110,17 +168,69 @@ def get_config() -> ServerConfig:
         transport=os.environ.get("MCP_TRANSPORT", "stdio"),
         port=int(os.environ.get("MCP_PORT", "5006")),
         output_dir=os.environ.get("ORPHEUS_OUTPUT_DIR", default_output),
+        idle_timeout=idle_timeout,
     )
 
 
 class LlamaServerManager:
-    """Manages the llama.cpp server lifecycle"""
+    """Manages the llama.cpp server lifecycle with idle timeout watchdog"""
 
     def __init__(self, config: ServerConfig):
         self.config = config
         self.process: Optional[subprocess.Popen] = None
         self.server_ready = False
         self.pid_file = "/tmp/llama-server.pid"
+        self.last_request_time: float = 0  # timestamp of last request
+        self._watchdog_running = False
+        self._watchdog_thread: Optional[threading.Thread] = None
+
+    def update_activity(self):
+        """Update last request timestamp - call on each request"""
+        self.last_request_time = time.time()
+
+    def start_watchdog(self):
+        """Start the idle timeout watchdog thread"""
+        if self._watchdog_running:
+            return
+
+        self._watchdog_running = True
+        self._watchdog_thread = threading.Thread(
+            target=self._watchdog_loop, daemon=True, name="llama-server-watchdog"
+        )
+        self._watchdog_thread.start()
+        print("✓ Idle timeout watchdog started", file=sys.stderr)
+
+    def stop_watchdog(self):
+        """Stop the idle timeout watchdog thread"""
+        self._watchdog_running = False
+        if self._watchdog_thread:
+            self._watchdog_thread.join(timeout=2)
+            self._watchdog_thread = None
+
+    def _watchdog_loop(self):
+        """Background loop that checks idle timeout"""
+        check_interval = 30  # Check every 30 seconds
+
+        while self._watchdog_running:
+            time.sleep(check_interval)
+
+            if not self._watchdog_running:
+                break
+
+            # Check if we should stop the server due to idle
+            if self.last_request_time > 0 and self.process is not None:
+                idle_seconds = time.time() - self.last_request_time
+
+                if idle_seconds >= self.config.idle_timeout:
+                    idle_minutes = idle_seconds / 60
+                    timeout_minutes = self.config.idle_timeout / 60
+                    print(
+                        f"Idle timeout reached ({idle_minutes:.1f} min > {timeout_minutes:.1f} min). "
+                        f"Stopping llama-server to free resources.",
+                        file=sys.stderr,
+                    )
+                    self.stop_server()
+                    print("✓ llama-server stopped due to idle timeout", file=sys.stderr)
 
     def _get_pid_from_file(self) -> Optional[int]:
         """Read PID from file"""
@@ -388,6 +498,10 @@ async def handle_generate_speech(
     arguments: dict,
 ) -> List[TextContent | ImageContent | EmbeddedResource]:
     """Generate speech from text"""
+    # Update activity timestamp for idle timeout watchdog
+    if server_manager:
+        server_manager.update_activity()
+
     text = arguments.get("text", "")
     voice = arguments.get("voice", DEFAULT_VOICE)
     output_path = arguments.get("output_path")
@@ -885,6 +999,8 @@ async def app_lifespan():
     # Start llama.cpp server if needed
     if config.auto_start_llama:
         server_manager = LlamaServerManager(config)
+        # Start the idle timeout watchdog
+        server_manager.start_watchdog()
         if not server_manager.start_server():
             print("⚠️ Warning: Could not start llama.cpp server", file=sys.stderr)
             print("  Make sure ORPHEUS_MODEL_PATH is set correctly", file=sys.stderr)
@@ -893,6 +1009,7 @@ async def app_lifespan():
 
     # Cleanup
     if server_manager:
+        server_manager.stop_watchdog()
         server_manager.stop_server()
 
 

@@ -189,7 +189,40 @@ orpheus-mcp/
 - `ORPHEUS_MODEL_PATH` - Path to Orpheus GGUF model (required)
 - `ORPHEUS_LLAMA_CPP_PATH` - Path to llama-server binary (optional, auto-detected)
 - `ORPHEUS_OUTPUT_DIR` - Output directory (default: ~/Documents/tts)
+- `ORPHEUS_IDLE_TIMEOUT` - Idle timeout before stopping llama-server (default: 5m)
+  - Supports duration strings: `300`, `5m`, `1h30m`, etc.
+- `ORPHEUS_STREAM_TIMEOUT` - Stream liveness timeout (default: 15s)
+  - Supports duration strings: `15`, `15s`, `1m30s`, etc.
+- `ORPHEUS_AUTO_START` - Auto-start llama-server (default: true)
 - `MCP_TRANSPORT` - Transport type: stdio or sse (default: stdio)
+
+## Pitfalls
+
+### Slow Hardware
+
+On slower hardware (CPU-only or older GPUs), token generation may be slow enough that the stream liveness timeout triggers. If you experience timeouts on longer texts:
+
+1. Increase `ORPHEUS_STREAM_TIMEOUT` (e.g., 30 or 60 seconds)
+2. Use shorter text chunks via the `estimate_tokens` tool to plan chunking
+
+### mcporter keep-alive
+
+When using mcporter, add `"lifecycle": "keep-alive"` to prevent server restarts between requests:
+
+```json
+{
+  "mcpServers": {
+    "orpheus-tts": {
+      "command": "/path/to/orpheus-mcp/run_mcp_server.sh",
+      "env": {
+        "ORPHEUS_MODEL_PATH": "/path/to/Orpheus-3b-FT-Q8_0.gguf",
+        "ORPHEUS_IDLE_TIMEOUT": "5"
+      },
+      "lifecycle": "keep-alive"
+    }
+  }
+}
+```
 
 ## License
 
